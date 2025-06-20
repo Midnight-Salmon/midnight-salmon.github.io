@@ -1,3 +1,7 @@
+% C for Cybersecurity
+% Midnight Salmon
+% 2025-02-23
+
 # C for Cybersecurity
 
 If you take a look at the “security” topic on GitHub today you’ll find my

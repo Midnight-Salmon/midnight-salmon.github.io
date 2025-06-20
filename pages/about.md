@@ -1,3 +1,7 @@
+% About
+% Midnight Salmon
+% 
+
 # About
 
 Midnight Salmon scrooches threat actors by day and codes utter nonsense by

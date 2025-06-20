@@ -1,3 +1,7 @@
+% Line Numbers Considered Harmful
+% Midnight Salmon
+% 2025-06-05
+
 # Line Numbers Considered Harmful
 
 ![A screenshot of the Vim text editor.](media/vimquiet.png)

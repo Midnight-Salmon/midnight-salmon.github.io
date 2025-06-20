@@ -1,3 +1,7 @@
+% What's Forth?
+% Midnight Salmon
+% 2025-05-27
+
 # What's Forth?
 
 > “What is Forth? I have hoped for some time that someone would tell me what it
