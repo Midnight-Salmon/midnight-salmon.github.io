@@ -26,10 +26,17 @@ pre {
   font-size: smaller;
   background-color: silver;
   color: black;
+  padding: 0.2em;
 }
 
 blockquote {
   font-style: italic;
+}
+
+time {
+  font-family: monospace;
+  color: silver;
+  font-size: smaller;
 }
 
 main img {
