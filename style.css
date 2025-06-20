@@ -19,7 +19,7 @@ main {
 }
 
 pre {
-  max-width: 50vw;
+  max-width: 100%;
   min-width: 800px;
   white-space: pre-wrap;
   overflow-wrap: break-word;
