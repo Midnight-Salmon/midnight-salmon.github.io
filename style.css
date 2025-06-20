@@ -13,7 +13,7 @@ header {
 }
 
 main {
-  width: 50vw;
+  max-width: 800px;
   min-width: 800px;
   margin: auto;
 }
