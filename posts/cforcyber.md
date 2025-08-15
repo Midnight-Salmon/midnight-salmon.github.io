@@ -1,0 +1,185 @@
+% C for Cybersecurity
+% Midnight Salmon
+% 2025-02-23
+
+# C for Cybersecurity
+
+If you take a look at the “security” topic on GitHub today you’ll find my
+beloved C relegated to the bottom of the language rankings. Python dominates by
+far, Go is on the rise, but C (the best language) is slumming it with
+TypeScript. This isn’t exactly a scientific measurement of language relevance
+in the industry (Ruby should be in there somewhere, thanks to Metasploit) but
+it suggests a painful truth: C isn’t cool anymore.
+
+C should still be cool. Consider the [Kali top
+10](https://www.kali.org/tools/kali-meta/#kali-tools-top10): more than half of
+those essential tools are written in C. Outside the top 10 there’s still a lot
+of C.  Sure, there are good reasons to use more modern languages for security
+tooling: they make picking information out of strings much easier, they have
+nice abstractions for networking... but I spent years writing Python and decided
+I didn’t like it all that much. I bounced off Go violently, and if you see me
+writing TypeScript I’ve been kidnapped and replaced by an evil clone with
+questionable taste. Why not write new tools in C? It was good enough for Nmap
+in 1997 (as a [single ~2000-line source file](https://nmap.org/p51-11.html)).
+How hard could it be? Let’s build a port scanner.
+
+## That Went Well
+
+There I was, looking with satisfaction at the recently-uploaded v1.0 build of
+my new port scanner, ready to write about what a breezy experience it was
+building it in C. Who needs dynamic typing? Who needs memory safety? C is
+straightforward and explicit, and everything just... Hey, why can’t I scan my
+loopback address?
+
+Yup, IPv6 connections were completely broken. Not only would the connection
+fail, but the addresses wouldn’t even print to the terminal correctly. The
+latter was an easy fix; I had a buffer sized for IPv4 addresses because I used
+the wrong constant. The connection issue took some diagnosing. More on that
+later. Eventually, though, with the help of my trusty GNU debugger and
+Microsoft’s surprisingly decent Win32 API documentation, I fixed it. That was
+really the only hurdle I encountered. Sure, the final product isn’t going to
+take on Nmap any time soon. But it’s fully functional and under 500 lines of
+code. I’m not convinced it would have been any easier in a higher-level
+language with a trendy dynamic type system.
+
+## The Nightmare Union from Hell
+
+Time for some technical bits. My toy port scanner, which I’ve named [Recce
+Mission](https://github.com/Midnight-Salmon/recce-mission), uses Winsock2 –
+Microsoft’s implementation of the [Berkeley sockets
+API](https://en.wikipedia.org/wiki/Berkeley_sockets). Every modern OS provides
+something similar; it’s the standard interface for user space network access.
+It’s not a strict standard, though: outside of POSIX it’s not a standard at
+all. The capabilities provided by a socket API depend entirely on the platform.
+This is why Recce Mission is a Windows program specifically. On Windows, access
+to raw sockets (sockets that bypass the platform’s TCP/IP stack) is restricted.
+Not so on POSIX-compliant, POSIX-adjacent, POSIX-ish systems. Raw sockets are
+what you need in order to perform the more clever [port scanning
+techniques](https://nmap.org/book/scan-methods.html) like stealth scans and
+idle scans with zombie hosts.
+
+Because of this platform limitation, Nmap on Windows requires a custom network
+driver and some complex manual construction of ethernet frames. Recce Mission
+uses only what the platform provides and therefore requires no installation of
+custom drivers, no registry changes, and no elevated user permissions.
+
+This leads us to what I think is my fundamental point when it comes to
+higher-level, supposedly cross-platform scripting languages used for
+cybersecurity: no matter what, you cannot escape the platform. No matter what
+language you use, your user space networking will use the platform-provided
+sockets API. Make the interface as friendly and object-oriented as you want,
+deep down it’s still Winsock2 and you still don’t have raw sockets.
+
+I’ll give the scripting languages one thing: they usually give you a way to
+avoid the cursed knowledge I’m about to inflict on you. Remember my IPv6
+problem? That surprised me, because I wrote the code to be address
+family-independent from the beginning. In the Berkeley sockets API this is
+achieved through a hellish system of structs containing pointers to structs
+containing pointers to more structs, type punning by abusing the memory layout
+of those structs and, on Windows, a union described in the more-or-less
+canonical [Beej’s
+Guide](https://beej.us/guide/bgnet/html/split/ip-addresses-structs-and-data-munging.html#structs)
+as “God-awful” and “one of the scariest unions of all time.” Languages with
+dynamic typing and inheritance give you a variety of options for dodging this
+nightmare. It’s still there of course, lurking deep in the interpreter, but
+it’s wrapped in something friendly.
+
+Here’s the offending code:
+
+~~~
+static void *scan_port(void *a) {
+  struct ScanThreadArgs *args = (struct ScanThreadArgs *)a;
+  struct addrinfo *target_info = args->target_info;
+  unsigned short port = args->port;
+  enum PortState *destination = args->destination;
+  struct sockaddr new_addr = *(target_info->ai_addr);
+  struct sockaddr_in *new_addr_v4 = (struct sockaddr_in *)&new_addr;
+  new_addr_v4->sin_port = htons(port);
+  ...
+~~~
+
+“Aha! You’re accessing the address as if it’s always IPv4! There’s your issue!”
+
+No, that’s fine actually. You can totally do that. The memory layout lines up,
+so the port number is in the same location no matter which of the pointer types
+you access it through. The issue is with copying data from target_info->ai_addr
+to a sockaddr. The ai_addr struct member is, on paper, of type (struct sockaddr
+*). Says so right in the documentation. In reality, it points to either a
+struct sockaddr_in or a struct sockaddr_in6 depending on the address family.
+The sockaddr struct isn’t actually big enough to hold an IPv6 address. So, even
+though that’s the type used in the addrinfo declaration, actually using it that
+way will truncate IPv6 addresses. If I was passing on ai_addr directly, instead
+of messing with the contents to scan multiple ports without multiple hostname
+resolutions, I wouldn’t have even noticed this. The corrected code is arguably
+nicer, too:
+
+~~~
+static void *scan_port(void *a) {
+  struct ScanThreadArgs *args = (struct ScanThreadArgs *)a;
+  struct addrinfo *target_info = args->target_info;
+  unsigned short port = args->port;
+  enum PortState *destination = args->destination;
+
+  /* Copy address to correct format, set port. */
+  
+  void *new_addr = NULL;
+  if (target_info->ai_family == AF_INET) {
+    struct sockaddr_in new_addr4;
+    new_addr4 = *((struct sockaddr_in*)(target_info->ai_addr));
+    new_addr4.sin_port = htons(port);
+    new_addr = &new_addr4;
+  }
+
+  else {
+    struct sockaddr_in6 new_addr6;
+    new_addr6 = *((struct sockaddr_in6*)(target_info->ai_addr));
+    new_addr6.sin6_port = htons(port);
+    new_addr = &new_addr6;
+  }
+...
+~~~
+
+Well. That wasn’t so bad. Right, moving on! Except we’re not, because that code
+has a problem. When compiled without optimisation flags it works fine. Turn on
+the optimiser, though, and [nasal
+demons](http://www.catb.org/jargon/html/N/nasal-demons.html) are unleashed.
+Rookie mistake! Spot the difference:
+
+~~~
+static void *scan_port(void *a) {
+  struct ScanThreadArgs *args = (struct ScanThreadArgs *)a;
+  struct addrinfo *target_info = args->target_info;
+  unsigned short port = args->port;
+  enum PortState *destination = args->destination;
+
+  /* Copy address to correct format, set port. */
+  
+  void *new_addr = NULL;
+  struct sockaddr_in new_addr4;
+  struct sockaddr_in6 new_addr6;
+  if (target_info->ai_family == AF_INET) {
+    new_addr4 = *(struct sockaddr_in *)(target_info->ai_addr);
+    new_addr4.sin_port = htons(port);
+    new_addr = &new_addr4;
+  }
+
+  else {
+    new_addr6 = *(struct sockaddr_in6 *)(target_info->ai_addr);
+    new_addr6.sin6_port = htons(port); new_addr = &new_addr6;
+  }
+...
+~~~
+
+I declared new_addr4 and new_addr6 inside a block, leaving them to go out of
+scope with new_addr still pointing to the address one of them occupied, thus
+ruining my evening. I was so convinced the problem was something much more
+esoteric that at one point I was combing through the assembly in a
+sleep-deprived haze. Turns out the problem was boring and stupid. Truly the
+quintessential C experience.
+
+## Let’s Get Outta Here
+
+So, okay, that thing with the type punning was pretty bad, and admittedly it
+wouldn’t have happened had I been using a... No, wait, what am I saying? What
+am I gonna do, write Python from now on? Fat chance. I’ve learned nothing. C
+forever!
