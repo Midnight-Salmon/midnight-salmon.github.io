@@ -8,10 +8,10 @@ This blog started out on WordPress. I like WordPress! Or, I *liked* WordPress.
 Ever since 5.0 introduced the Gutenberg block-based editor, WordPress has given
 up on being a blogging platform in favour of competing with Wix and SquareSpace
 as a general web publishing tool with WYSIWYG editing. That's nice for web
-design shops selling trendy landing pages to business, but it sucks for anyone
-who just wants a blog.
+design shops selling trendy landing pages to businesses, but it sucks for
+anyone who just wants a blog.
 
-After tiring of wrestling Gutenberg, I wrote
+After tiring of wrestling with Gutenberg, I wrote
 [scrumble](https://github.com/Midnight-Salmon/scrumble). Scrumble is a static
 site generator. It takes a folder full of Markdown files representing blog
 posts and top-level pages and generates a blog in simple semantic HTML and CSS.
@@ -31,5 +31,5 @@ not having any plugins. A static site is of course invulnerable to anything
 short of an attacker gaining access to the hosting backend.
 
 A blog is really the simplest kind of website. Unless you're a national news
-outlet, you really don't need a CMS. Plain text files and a script with a goofy
-name are more than enough.
+outlet, you don't need a CMS. Plain text files and a script with a goofy name
+are more than enough.
